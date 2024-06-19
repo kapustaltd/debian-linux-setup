@@ -2,3 +2,4 @@ store.db
 __pycache__/
 *.pyc
 .DS_Store
+*:Zone.Identifier
