@@ -1,0 +1,52 @@
+hostnamectl set-hostname isp.au-team.irpo; exec bash
+mkdir -p /etc/net/ifaces/enp7s{2,3}
+
+echo 'TYPE=eth' | tee /etc/net/ifaces/enp7s{2,3}/options
+echo '172.16.50.1/28' > /etc/net/ifaces/enp7s2/ipv4address
+echo '172.16.60.1/28' > /etc/net/ifaces/enp7s3/ipv4address
+
+systemctl restart network
+
+ip -c --br a
+
+cat > /etc/sysctl.d/99-ipforward.conf <<EOF
+net.ipv4.ip_forward = 1
+EOF
+
+sysctl --system
+
+apt-get update && apt-get install -y nftables nano
+
+mkdir -p /etc/nftables
+
+cat > /etc/nftables/nftables.nft <<'EOF'
+#!/usr/sbin/nft -f
+
+flush ruleset
+
+table ip nat {
+    chain postrouting {
+        type nat hook postrouting priority srcnat;
+        oifname "enp7s1" masquerade
+    }
+}
+EOF
+
+systemctl enable --now nftables
+systemctl start nftables
+nft flush ruleset
+nft -f /etc/nftables/nftables.nft
+
+nft list ruleset
+
+sysctl net.ipv4.ip_forward
+
+ping -c4 ya.ru 
+
+
+
+apt-get update && apt-get install tzdata -y
+
+timedatectl set-timezone Asia/Novosibirsk
+
+timedatectl

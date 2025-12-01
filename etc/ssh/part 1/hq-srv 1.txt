@@ -1,0 +1,147 @@
+hostnamectl set-hostname hq-srv.au-team.irpo; exec bash
+
+echo 'TYPE=eth' > /etc/net/ifaces/enp7s1/options
+
+echo '192.168.113.2/27' > /etc/net/ifaces/enp7s1/ipv4address
+
+echo 'default via 192.168.113.1' > /etc/net/ifaces/enp7s1/ipv4route
+
+echo 'nameserver 8.8.8.8' > /etc/net/ifaces/enp7s1/resolv.conf
+
+systemctl restart network
+
+ip -c --br a
+
+
+
+
+useradd -u 2013 sshuser
+
+echo "sshuser:P@ssw0rd" | chpasswd
+
+usermod -aG wheel sshuser
+
+echo "WHEEL_USERS ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/sshuser
+
+su -l sshuser
+
+sudo id
+
+exit
+
+
+cat > /etc/openssh/sshd_config <<'EOF'
+Port 2013
+AllowUsers sshuser
+MaxAuthTries 2
+Banner /etc/openssh/ssh_banner
+EOF
+
+echo "Authorized access only" | tee /etc/openssh/ssh_banner
+
+systemctl restart sshd
+
+ssh -p 2013 sshuser@192.168.113.2
+
+exit
+
+
+
+apt-get update && apt-get install bind bind-utils nano -y
+
+echo $'search au-team.irpo\nnameserver 127.0.0.1' > /etc/net/ifaces/enp7s1/resolv.conf
+
+rndc-confgen -a -c /etc/bind/rndc.key
+
+
+
+cat > /etc/bind/options.conf <<'EOF'
+options {
+    listen-on { 127.0.0.1; 192.168.113.2; };
+    forwarders { 77.88.8.7; 77.88.8.3; };
+    recursion yes;
+    allow-recursion { any; };
+    allow-query { any; };
+    dnssec-validation no;
+    directory "/etc/bind/zone";
+    dump-file "/var/run/named/named_dump.db";
+    statistics-file "/var/run/named/named.stats";
+    pid-file "/var/run/named/named.pid";
+};
+
+logging {
+    category default { default_syslog; };
+};
+
+zone "au-team.irpo" {
+    type master;
+    file "au-team.irpo";
+};
+
+zone "168.192.in-addr.arpa" {
+    type master;
+    file "168.192.in-addr.arpa";
+};
+EOF
+
+cp -r /etc/bind/zone/127.in-addr.arpa /etc/bind/zone/au-team.irpo
+
+
+cat > /etc/bind/zone/au-team.irpo <<'EOF'
+$TTL 1D
+@ IN SOA au-team.irpo. root.au-team.irpo. (
+	2025020600
+    12H
+    1H
+    1W
+    1H
+)
+@       IN NS    hq-srv.au-team.irpo.
+
+hq-rtr  IN A     192.168.113.1
+hq-srv  IN A     192.168.113.2
+hq-cli  IN A     192.168.213.2
+br-rtr  IN A     192.168.0.1
+br-srv  IN A     192.168.0.2
+docker  IN A     172.16.50.1
+web     IN A     172.16.60.1
+EOF
+
+
+cp -r /etc/bind/zone/127.in-addr.arpa /etc/bind/zone/168.192.in-addr.arpa
+
+cat > /etc/bind/zone/168.192.in-addr.arpa <<'EOF'
+$TTL 1D
+@ IN SOA au-team.irpo. root.au-team.irpo. (
+    2025020600
+    12H
+    1H
+    1W
+    1H
+)
+@       IN NS    au-team.irpo.
+
+1.113   IN PTR   hq-rtr.au-team.irpo.
+2.113   IN PTR   hq-srv.au-team.irpo.
+2.213   IN PTR   hq-cli.au-team.irpo.
+EOF
+
+chown :named /etc/bind/zone/au-team.irpo /etc/bind/zone/168.192.in-addr.arpa
+
+systemctl enable --now bind
+
+service network restart
+
+systemctl restart bind.service
+
+host br-rtr
+
+host -t PTR 192.168.113.2
+
+
+
+apt-get update && apt-get install tzdata -y
+
+timedatectl set-timezone Asia/Novosibirsk
+
+timedatectl

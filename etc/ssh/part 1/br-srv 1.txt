@@ -1,0 +1,55 @@
+hostnamectl set-hostname br-srv.au-team.irpo; exec bash
+
+echo 'TYPE=eth' > /etc/net/ifaces/enp7s1/options
+
+echo '192.168.0.2/28' > /etc/net/ifaces/enp7s1/ipv4address
+
+echo 'default via 192.168.0.1' > /etc/net/ifaces/enp7s1/ipv4route
+
+echo $'search au-team.irpo\nnameserver 192.168.113.2' > /etc/net/ifaces/enp7s1/resolv.conf
+
+systemctl restart network
+
+ip -c --br a
+
+
+
+
+useradd -u 2013 sshuser
+
+echo "sshuser:P@ssw0rd" | chpasswd
+
+usermod -aG wheel sshuser
+
+echo "WHEEL_USERS ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/sshuser
+
+su -l sshuser
+
+sudo id
+
+exit
+
+
+
+cat > /etc/openssh/sshd_config <<'EOF'
+Port 2013
+AllowUsers sshuser
+MaxAuthTries 2
+Banner /etc/openssh/ssh_banner
+EOF
+
+echo "Authorized access only" | tee /etc/openssh/ssh_banner
+
+systemctl restart sshd
+
+ssh -p 2013 sshuser@192.168.0.2
+
+exit
+
+
+
+apt-get update && apt-get install tzdata -y
+
+timedatectl set-timezone Asia/Novosibirsk
+
+timedatectl

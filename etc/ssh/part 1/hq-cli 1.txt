@@ -1,0 +1,7 @@
+hostnamectl set-hostname hq-cli.au-team.irpo; exec bash
+
+apt-get update && apt-get install tzdata -y
+
+timedatectl set-timezone Asia/Novosibirsk
+
+timedatectl

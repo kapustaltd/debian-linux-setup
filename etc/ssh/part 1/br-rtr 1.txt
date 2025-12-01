@@ -1,0 +1,124 @@
+hostnamectl set-hostname br-rtr.au-team.irpo; exec bash
+
+mkdir -p /etc/net/ifaces/{enp7s{1,2},gre1}
+
+echo 'TYPE=eth' | tee /etc/net/ifaces/enp7s{1,2}/options
+
+echo '172.16.60.2/28' > /etc/net/ifaces/enp7s1/ipv4address
+
+echo 'default via 172.16.60.1' > /etc/net/ifaces/enp7s1/ipv4route
+
+echo 'nameserver 8.8.8.8' > /etc/net/ifaces/enp7s1/resolv.conf
+
+echo '192.168.0.1/28' > /etc/net/ifaces/enp7s2/ipv4address
+
+cat > /etc/sysctl.d/99-ipforward.conf <<EOF
+net.ipv4.ip_forward = 1
+EOF
+
+sysctl --system
+
+systemctl restart network
+
+ip -c --br a
+
+
+
+
+useradd net_admin
+
+echo "net_admin:P@ssw0rd" | chpasswd
+
+usermod -aG wheel net_admin
+
+apt-get update && apt-get install sudo -y
+
+echo "WHEEL_USERS ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/net_admin
+
+su -l net_admin
+
+sudo id
+
+
+
+
+mkdir -p /etc/net/ifaces/gre1
+
+cat > /etc/net/ifaces/gre1/options <<'EOF'
+TYPE=iptun
+TUNTYPE=gre
+TUNLOCAL=172.16.60.2
+TUNREMOTE=172.16.50.2
+TUNTTL=64
+TUNOPTIONS='ttl 64'
+EOF
+
+echo "10.10.10.2/30" > /etc/net/ifaces/gre1/ipv4address
+systemctl restart network
+
+ip -br -c a
+
+
+
+apt-get update && apt-get install frr -y
+
+sed -i 's/ospfd=no/ospfd=yes/' /etc/frr/daemons ; grep ospf /etc/frr/daemons
+
+mkdir -p /etc/frr
+
+cat > /etc/frr/frr.conf <<'EOF'
+interface gre
+ no ip ospf passive
+exit
+!
+interface gre1
+ ip ospf area 0
+ ip ospf authentication
+ ip ospf authentication-key P@ssw0rd
+ no ip ospf passive
+exit
+!
+interface enp7s2
+ ip ospf area 0
+exit
+!
+router ospf
+ passive-interface default
+exit
+EOF
+
+systemctl enable --now frr
+
+systemctl restart network
+
+
+
+apt-get install nftables nano -y
+
+mkdir -p /etc/nftables
+
+cat > /etc/nftables/nftables.nft <<'EOF'
+#!/usr/sbin/nft -f
+
+flush ruleset
+
+table ip nat {
+    chain postrouting {
+        type nat hook postrouting priority srcnat;
+        oifname "enp7s1" masquerade
+    }
+}
+EOF
+
+
+systemctl enable --now nftables
+
+systemctl restart nftables.service
+
+
+
+apt-get update && apt-get install tzdata -y
+
+timedatectl set-timezone Asia/Novosibirsk
+
+timedatectl
