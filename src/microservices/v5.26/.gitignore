@@ -1,0 +1,5 @@
+furniture_store.db
+product_images/
+__pycache__/
+*.pyc
+.DS_Store
